@@ -13,6 +13,7 @@ function Stacker() {
   this.phase = 1;
   this.blocks = new ArraySet();
   this.turnQueue = [];
+  this.visitedCells = new Set()
 
   // 33 x 33 coordinate map to allow for us starting at any origin
   this.caveMap = [];
@@ -29,7 +30,7 @@ function Stacker() {
     } else if (type === 1) {
       if (this.caveMap[y][x] !== 9) {
         this.caveMap[y][x] = 9;
-        console.log(x,y)
+        // console.log(x,y)
       }
     } else if (type === 2) {
       this.caveMap[y][x] = level;
@@ -37,10 +38,42 @@ function Stacker() {
         this.blocks.add([x, y]);
       }
     } else if (type === 3) {
-      this.caveMap[y][x] = 8;
       if (this.gold[0] === -1) {
-        this.gold = [x, y];
+        this.foundGold(x, y);
       }
+    }
+  };
+
+  // mark location of gold and then queue up the turns required to circle the tower, just to ensure the staircase locations are mapped
+  this.foundGold = function (x, y) {
+    console.log("Found Gold!");
+    console.log(x, y, this.location);
+    this.caveMap[y][x] = 8;
+    this.gold = [x, y];
+    if (x === this.location[0] + 1) {
+      this.turnQueue.push(
+        "up",
+        "right",
+        "right",
+        "down",
+        "down",
+        "left",
+        "left"
+      );
+    } else if (x === this.location[0] - 1) {
+      this.turnQueue.push(
+        "up",
+        "left",
+        "left",
+        "down",
+        "down",
+        "right",
+        "right"
+      );
+    } else if (y === this.location[1] + 1) {
+      this.turnQueue.push("right", "down", "down", "left", "left", "up", "up");
+    } else if (y === this.location[1] - 1) {
+      this.turnQueue.push("right", "up", "up", "left", "left", "down", "down");
     }
   };
 
@@ -51,10 +84,9 @@ function Stacker() {
   this.pathToStaircase = function () {};
 
   this.pathToCoords = function (map, start, target) {
-    console.log(map)
-    this.printMap()
-    console.log(start)
-    console.log(target)
+    this.printMap(map);
+    console.log(start);
+    console.log(target);
     // const rows = coordinateMap.length;
     // const cols = coordinateMap[0].length;
 
@@ -68,16 +100,16 @@ function Stacker() {
 
     // Helper function to check if a cell is valid (within map bounds and not a wall)
     function isValidCell(y, x) {
-      return map[y][x] !== 9 || map[y][x] !== "-";
+      return map[y][x] !== 9 && map[y][x] !== "-";
     }
 
     // Helper function to perform DFS to find a path
     function dfs(y, x) {
-      if (y === target[0] && x === target[1]) {
+      if (y === target[1] && x === target[x]) {
         return true; // Found the target
       }
 
-      map[y][x] = 9; // Mark as visited to avoid revisiting
+      map[y][x] = 11; // Mark as visited to avoid revisiting
 
       for (const [dr, dc] of directions) {
         const newY = y + dr;
@@ -95,20 +127,19 @@ function Stacker() {
     }
 
     // Call the DFS function from the start position
-    if (
-      isValidCell(start[0], start[1]) &&
-      dfs(start[0], start[1])
-    ) {
+    if (isValidCell(start[1], start[0]) && dfs(start[1], start[0])) {
       // Initialize the path and backtrack to construct it
       const path = [];
+      console.log(path);
       let [y, x] = target;
 
       while (!(y === start[0] && x === start[1])) {
         path.unshift([y, x]);
+        console.log(path);
         for (const [dr, dc] of directions) {
           const newY = y + dr;
           const newX = x + dc;
-          if (isValidCell(newY, newX) && map[newY][newX] === 9) {
+          if (isValidCell(newY, newX) && map[newY][newX] === 11) {
             y = newY;
             x = newX;
             break;
@@ -125,6 +156,7 @@ function Stacker() {
 
   // call updateCoordinate on all surrounding cells and current cell
   this.updateMap = function (cell) {
+    this.visitedCells.add(`${this.location[0]},${this.location[1]}`)
     const { level, type, left, right, up, down } = cell;
     this.updateCoordinate(this.location[0], this.location[1], { level, type });
     this.updateCoordinate(this.location[0] + 1, this.location[1], right);
@@ -136,7 +168,11 @@ function Stacker() {
   // check if conditions for phase 2 are met
   // if they are, setup staircase plan
   this.countBlocks = function () {
-    if (this.blocks.size > 28 && this.gold[0] !== -1) {
+    if (
+      this.blocks.size > 28 &&
+      this.gold[0] !== -1 &&
+      this.turnQueue.length === 0
+    ) {
       console.log("*********PHASE 2**********");
       const goldXY = [...this.gold];
       this.staircase = [
@@ -181,19 +217,31 @@ function Stacker() {
           neededHeight: 9,
         },
       ];
-      // this.printMap();
+      this.printMap();
+      console.log(this.visitedCells)
       this.phase = 2;
-      console.log(this.pathToCoords(this.caveMap, this.location, [goldXY[0] + 1, goldXY[1]]));
     }
   };
 
   // legibly print map in console
-  this.printMap = function () {
-    console.log("-----Turns: " + this.turns)
+  this.printMap = function (map) {
+    console.log("-----Turns: " + this.turns);
     // copy[this.location[1]][this.location[0]] = "X";
     for (let i = 0; i < 33; i++) {
-      console.log(this.caveMap[i].join("   "));
+      var row = "";
+      for (let j = 0; j < 33; j++) {
+        const ele = this.caveMap[i][j];
+        if (i === this.location[1] && j === this.location[0]) {
+          row += "X";
+        } else {
+          row += ele;
+        }
+        row += "   ";
+      }
+      console.log(row);
     }
+    console.log("Current Location:")
+    console.log(this.location)
   };
 
   // magic
@@ -201,10 +249,6 @@ function Stacker() {
   this.turn = function (cell) {
     // update turns and map on every turn
     this.updateMap(cell);
-    // if (this.turns % 10 == 0) {
-    //   console.log("*****TURNS: " + this.turns)
-    //   this.printMap()
-    // }
     this.turns++;
 
     // check to see if we should move to phase 2 before proceeding
@@ -212,6 +256,9 @@ function Stacker() {
 
     // phase 1: Randomly move until cave sufficienty explored to reveal gold and 28 blocks
     if (this.phase == 1) {
+      if (this.turnQueue.length > 0) {
+        return this.turnQueue.shift();
+      }
       const { left, right, up, down, level } = cell;
       var validDirections = [];
       if (left.type !== 1 && Math.abs(left.level - level) < 2) {
@@ -244,9 +291,15 @@ function Stacker() {
           // chart course to staircase
         } else {
           // chart course to block
+          console.log(
+            this.pathToCoords(this.caveMap, this.location, [
+              this.gold[0] + 1,
+              this.gold[1],
+            ])
+          );
         }
       }
-      return this.turnQueue.unshift();
+      return this.turnQueue.shift();
     }
   };
 
