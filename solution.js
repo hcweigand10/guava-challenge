@@ -9,7 +9,7 @@ function Stacker() {
   this.turns = 0;
   this.gold = [-1, -1];
   this.staircase = [];
-  this.prev = null;
+  this.prev = [-1,-1];
   this.phase = 1;
   this.blocks = new ArraySet();
   this.turnQueue = [];
@@ -47,7 +47,7 @@ function Stacker() {
   // mark location of gold and then queue up the turns required to circle the tower, just to ensure the staircase locations are mapped
   this.foundGold = function (x, y) {
     console.log("Found Gold!");
-    console.log(x, y, this.location);
+    console.log(x,y, this.location)
     this.caveMap[y][x] = 8;
     this.gold = [x, y];
     if (x === this.location[0] + 1) {
@@ -105,7 +105,7 @@ function Stacker() {
 
     // Helper function to perform DFS to find a path
     function dfs(y, x) {
-      if (y === target[1] && x === target[x]) {
+      if (y === target[1] && x === target[0]) {
         return true; // Found the target
       }
 
@@ -130,12 +130,10 @@ function Stacker() {
     if (isValidCell(start[1], start[0]) && dfs(start[1], start[0])) {
       // Initialize the path and backtrack to construct it
       const path = [];
-      console.log(path);
       let [y, x] = target;
 
       while (!(y === start[0] && x === start[1])) {
         path.unshift([y, x]);
-        console.log(path);
         for (const [dr, dc] of directions) {
           const newY = y + dr;
           const newX = x + dc;
@@ -217,8 +215,6 @@ function Stacker() {
           neededHeight: 9,
         },
       ];
-      this.printMap();
-      console.log(this.visitedCells)
       this.phase = 2;
     }
   };
@@ -247,6 +243,10 @@ function Stacker() {
   // magic
   // two sets of instructions, one for phase 1 and one for phase 2
   this.turn = function (cell) {
+    if (this.prev[0] === this.location[0] && this.prev[1] === this.location[1]) {
+      console.log("uh oh")
+    }
+    this.prev = this.location
     // update turns and map on every turn
     this.updateMap(cell);
     this.turns++;
@@ -257,7 +257,12 @@ function Stacker() {
     // phase 1: Randomly move until cave sufficienty explored to reveal gold and 28 blocks
     if (this.phase == 1) {
       if (this.turnQueue.length > 0) {
-        return this.turnQueue.shift();
+
+        const nextTurn = this.turnQueue.shift();
+        if (nextTurn === "up") return this.up()
+        if (nextTurn === "down") return this.down()
+        if (nextTurn === "left") return this.left()
+        if (nextTurn === "right") return this.right()
       }
       const { left, right, up, down, level } = cell;
       var validDirections = [];
