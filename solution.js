@@ -16,11 +16,18 @@ function Stacker() {
   this.blocks = new ArraySet();
   this.turnQueue = [];
   this.visitedCells = new Set();
+  this.nextBlock = [-1,-1]
 
   // 33 x 33 coordinate map to allow for us starting at any origin
   this.caveMap = [];
   for (let i = 0; i < 33; i++) {
     this.caveMap.push(new Array(33).fill("-"));
+  }
+
+  this.checkIfInStaircase = function (coords) {
+    if (coords[0] + 1 === this.gold[0] && coords[1] + 1 === this.gold[1]) return false
+    if (Math.abs(coords[0] - this.gold[0]) < 2 && Math.abs(coords[1] - this.gold[1]) < 2) return true
+    return false
   }
 
   // take in specific coordinates and value at the location, update map
@@ -35,9 +42,32 @@ function Stacker() {
         // console.log(x,y)
       }
     } else if (type === 2) {
+      if (this.caveMap[y][x] !== level) {
+        if (!this.checkIfInStaircase([x,y])) {
+          console.log("new block:")
+          console.log(x,y)
+          console.log(this.blocks.has([x,y]))
+        }
+      }
       this.caveMap[y][x] = level;
-      if (this.phase === 1 && !this.blocks.has([x, y])) {
-        this.blocks.add([x, y]);
+      if (this.phase === 1) {
+        this.blocks.add([x,y])
+      } else if (this.phase === 2) {
+        // don't add if the block is in the staircase
+        // if ((Math.abs(x - this.gold[0]) > 1) || (Math.abs(y - this.gold[1]) > 1)) {
+          // don't add if the block is the one we are about to pickup
+          // if (this.nextBlock[0] !== x && this.nextBlock[1] !== y) {
+          //   const oldSize = this.blocks.size
+          //   this.blocks.add([x,y])
+          //   if (this.blocks.size > oldSize) {
+          //     console.log("addededd")
+          //     console.log(x,y)
+          //   }
+          // }
+        // }
+        if (!this.checkIfInStaircase([x,y])) {
+          this.blocks.add([x,y])
+        }
       }
     } else if (type === 3) {
       if (this.gold[0] === -1) {
@@ -157,7 +187,7 @@ function Stacker() {
   };
 
   // check if conditions for phase 2 are met
-  // if they are, setup staircase plan
+  // if they are, setup staircase plan, filter blocks already in staircase from list of blocks to gather
   this.countBlocks = function () {
     if (
       this.blocks.size > 28 &&
@@ -165,15 +195,18 @@ function Stacker() {
       this.turnQueue.length === 0
     ) {
       console.log("*********PHASE 2**********");
+      console.log(Array.from(this.blocks))
       const goldXY = [...this.gold];
       // mark where staircase will begin, this will be our reference point for building
       this.staircaseStart = [this.gold[0], this.gold[1] - 1];
-      this.genStaircase()
-      // convert blocks set back into array for easier accessing
-      this.blocks = Array.from(this.blocks).map((x) =>
-        x.split(",").map((y) => parseInt(y))
-      );
+      this.genStaircase();
       this.printMap();
+      // filter out blocks next to gold from the list of blocks to be gathered
+      this.blocks = new ArraySet(Array.from(this.blocks)
+        .map((block) => block.split(",").map((coord) => parseInt(coord)))
+        .filter(
+          (block) => !this.checkIfInStaircase(block)
+        ))
       this.phase = 2;
     }
   };
@@ -195,8 +228,13 @@ function Stacker() {
       }
       console.log(row);
     }
+    console.log("gold:");
+    console.log(this.gold);
     console.log("Current Location:");
     console.log(this.location);
+    console.log("Blocks");
+    console.log(this.blocks);
+
   };
 
   // reset all of the visited coordinates
@@ -213,24 +251,28 @@ function Stacker() {
   };
 
   this.calcNextNeededStair = function () {
-    const fullClimb = ["right", "down", "down", "left", "left", "up"]
-    let step = 0
+    const fullClimb = ["right", "down", "down", "left", "left", "up"];
+    let step = 0;
     while (step < 6) {
-      const stair = this.staircase[step]
-      const nextStair = this.staircase[step + 1]
-      if (this.caveMap[stair.loc[1]][stair.loc[0]] < stair.neededHeight && this.caveMap[nextStair.loc[1]][nextStair.loc[0]] === this.caveMap[stair.loc[1]][stair.loc[0]] + 1) {
-        break
+      const stair = this.staircase[step];
+      const nextStair = this.staircase[step + 1];
+      if (
+        this.caveMap[stair.loc[1]][stair.loc[0]] < stair.neededHeight &&
+        this.caveMap[nextStair.loc[1]][nextStair.loc[0]] ===
+          this.caveMap[stair.loc[1]][stair.loc[0]] + 1
+      ) {
+        break;
       }
-      step++
+      step++;
     }
     // this.updateStaircase()
     // this.staircase[step].currHeight += 1
-    const path = fullClimb.slice(0,step)
-    return path
-  }
+    const path = fullClimb.slice(0, step);
+    return path;
+  };
 
   this.genStaircase = function () {
-    const goldXY = [...this.gold]
+    const goldXY = [...this.gold];
     this.staircase = [
       {
         loc: [goldXY[0], goldXY[1] - 1],
@@ -273,20 +315,20 @@ function Stacker() {
         neededHeight: 9,
       },
     ];
-  }
+  };
 
   this.flipAndReversePath = function (path) {
-    return path.reverse().map(x => this.flipTurn(x))
-  }
+    return path.reverse().map((x) => this.flipTurn(x));
+  };
 
   this.flipTurn = function (turn) {
-    if (turn === "down") return "up"
-    if (turn === "up") return "down"
-    if (turn === "left") return "right"
-    if (turn === "right") return "left"
-    if (turn === "pickup") return "drop"
-    if (turn === "drop") return "pickup"
-  }
+    if (turn === "down") return "up";
+    if (turn === "up") return "down";
+    if (turn === "left") return "right";
+    if (turn === "right") return "left";
+    if (turn === "pickup") return "drop";
+    if (turn === "drop") return "pickup";
+  };
 
   // magic
   // two sets of instructions, one for phase 1 and one for phase 2
@@ -295,11 +337,12 @@ function Stacker() {
     if (
       this.prev[0] === this.location[0] &&
       this.prev[1] === this.location[1] &&
-      (this.prevMove !== "pickup" && this.prevMove !== "drop")
+      this.prevMove !== "pickup" &&
+      this.prevMove !== "drop"
     ) {
       console.log("uh oh, failed move");
-      console.log(this.prev)
-      console.log(this.prevMove)
+      console.log(this.prev);
+      console.log(this.prevMove);
     }
     // track prev square
     this.prev = [...this.location];
@@ -340,8 +383,8 @@ function Stacker() {
       // if possible to continue in straight line, tend to do so 75% of the time
       // 100% might cause ping-pong between dead ends
       if (validDirections.includes(this.prevMove)) {
-        if (Math.random() > 0.25) {
-          validDirections = [this.prevMove]
+        if (Math.random() > 0.3) {
+          validDirections = [this.prevMove];
         }
       }
       const n = (Math.random() * validDirections.length) >> 0;
@@ -353,16 +396,30 @@ function Stacker() {
 
     // phase 2: build staircase
     else if (this.phase === 2) {
+      if (this.caveMap[this.gold[1]][this.gold[0]-1] === 8) {
+        this.printMap()
+      }
       if (this.turnQueue.length === 0) {
         if (this.hasBlock) {
           // build next stair in staircase and then return to staircase start
-          const pathToNextStair = this.calcNextNeededStair()
-          this.turnQueue = this.turnQueue.concat(pathToNextStair)
-          this.turnQueue.push("drop")
-          this.turnQueue = this.turnQueue.concat(this.flipAndReversePath(pathToNextStair))
+          const pathToNextStair = this.calcNextNeededStair();
+          this.turnQueue = this.turnQueue.concat(pathToNextStair);
+          this.turnQueue.push("drop");
+          this.turnQueue = this.turnQueue.concat(
+            this.flipAndReversePath(pathToNextStair)
+          );
         } else {
           // chart course to block and course back
-          const pathToBlock = this.pathToCoords(this.location, this.blocks[0]);
+          // convert set of known blocks into array
+          const blockCoordsArray = Array.from(this.blocks).map((block) =>
+            block.split(",").map((coord) => parseInt(coord))
+          );
+          // sort array by distance to gold
+          blockCoordsArray.sort(
+            (a, b) => this.calcDistanceToGold(a) - this.calcDistanceToGold(b)
+          );
+          this.nextBlock = blockCoordsArray[0];
+          const pathToBlock = this.pathToCoords(this.location, this.nextBlock);
           const turns = this.convertPathToTurns(pathToBlock, this.location);
           this.turnQueue = this.turnQueue.concat(turns);
           this.turnQueue.push("pickup");
@@ -371,19 +428,18 @@ function Stacker() {
             this.location[0] === this.staircaseStart[0] &&
             this.location[1] === this.staircaseStart[1]
           ) {
-            this.turnQueue = this.turnQueue.concat(this.flipAndReversePath(turns));
+            this.turnQueue = this.turnQueue.concat(
+              this.flipAndReversePath(turns)
+            );
           }
           // else, calc path back to staircase
           else {
-            const pathBack = this.pathToCoords(
-              this.blocks[0],
-              this.staircaseStart
-            );
-            const turns = this.convertPathToTurns(pathBack, this.blocks[0]);
+            const pathBack = this.pathToCoords(this.nextBlock, this.staircaseStart);
+            const turns = this.convertPathToTurns(pathBack, this.nextBlock);
             this.turnQueue = this.turnQueue.concat(turns);
           }
-          // remove block from list
-          this.blocks.shift();
+          this.blocks.delete(this.nextBlock)
+          
         }
       }
       // refactor (duplicates)
@@ -394,8 +450,8 @@ function Stacker() {
       if (nextTurn === "right") return this.right();
       if (nextTurn === "pickup") {
         if (cell.type !== 2) {
-          console.log("Trying to pickup empty cell!")
-          console.log(this.location)
+          console.log("Trying to pickup empty cell!");
+          console.log(this.location);
         }
         return this.pickup();
       }
@@ -415,6 +471,12 @@ function Stacker() {
       if (prevBlock[1] - 1 === coords[1]) return "up";
     });
     return turns;
+  };
+
+  this.calcDistanceToGold = function (coords) {
+    return (
+      Math.abs(this.staircaseStart[0] - coords[0]) + Math.abs(this.staircaseStart[1] - coords[1])
+    );
   };
 
   this.up = function () {
@@ -440,18 +502,13 @@ function Stacker() {
 
   this.pickup = function () {
     this.prevMove = "pickup";
+    this.blocks.delete(this.location)
     this.hasBlock = true;
     return "pickup";
   };
-  
+
   this.drop = function () {
     this.prevMove = "drop";
-    // this.staircase = this.staircase.map(x => {
-    //   if (x.coords === this.location) return {...x, currHeight: x.currHeight + 1}
-    //   else return x
-    // })
-    console.log(JSON.stringify(this.staircase.map(x => this.caveMap[x.loc[1]][x.loc[0]])))
-    console.log(this.location)
     this.hasBlock = false;
     return "drop";
   };
@@ -464,5 +521,8 @@ class ArraySet extends Set {
   has(arr) {
     return super.has(arr.toString());
   }
-  
+
+  delete(arr) {
+    super.delete(arr.toString());
+  }
 }
