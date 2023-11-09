@@ -37,7 +37,7 @@ function Stacker() {
     // check to see if we should move to phase 2 before proceeding
     if (this.phase === 1) this.checkPhase2();
 
-    // PHASE 1: Randomly move until cave sufficienty explored to reveal gold and 28 blocks
+    // PHASE 1: Randomly-ish move until cave sufficienty explored to reveal gold and 28 blocks
     if (this.phase == 1) {
       // if any moves in queue, do next
       if (this.turnQueue.length > 0) {
