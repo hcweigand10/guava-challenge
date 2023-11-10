@@ -1,9 +1,4 @@
 function Stacker() {
-  var EMPTY = 0,
-    WALL = 1,
-    BLOCK = 2,
-    GOLD = 3;
-
   this.hasBlock = false;
   this.location = [16, 16];
   this.turns = 0;
@@ -17,9 +12,11 @@ function Stacker() {
   this.turnQueue = [];
   this.nextBlock = [-1, -1];
   this.fullClimb = ["right", "down", "down", "left", "left", "up"];
+  this.mapSizeHistory = [0];
+  this.lastExplore = 0;
 
   // when exploring, this number dictates liklihood of continuing in straight line (when possible)
-  this.exploreStraightFactor = 0.69;
+  this.exploreStraightFactor = 0.71;
 
   // 33 x 33 coordinate map to allow for us starting at any origin
   this.caveMap = [];
@@ -40,50 +37,58 @@ function Stacker() {
 
     // PHASE 1: Randomly-ish move until cave sufficienty explored to reveal gold and 28 blocks
     if (this.phase == 1) {
-      if (this.turns === 225) {
-        this.printMap()
-        this.exploreEdge()
-      }
-      // if any moves in queue, do next
-      if (this.turnQueue.length > 0) {
-        const nextTurn = this.turnQueue.shift();
-        if (nextTurn === "up") return this.up();
-        if (nextTurn === "down") return this.down();
-        if (nextTurn === "left") return this.left();
-        if (nextTurn === "right") return this.right();
-      }
-      // otherwise, compute valid options
-      const { left, right, up, down, level } = cell;
-      var validDirections = [];
-      if (left.type !== 1 && Math.abs(left.level - level) < 2) {
-        validDirections.push("left");
-      }
-      if (right.type !== 1 && Math.abs(right.level - level) < 2) {
-        validDirections.push("right");
-      }
-      if (up.type !== 1 && Math.abs(up.level - level) < 2) {
-        validDirections.push("up");
-      }
-      if (down.type !== 1 && Math.abs(down.level - level) < 2) {
-        validDirections.push("down");
-      }
-      // remove the option that would take us back to previous square, unless that is only option
-      if (validDirections.length > 1) {
-        validDirections = validDirections.filter((x) => x !== this.flipTurn(x));
-      }
-      // if possible to continue in straight line, tend to do so 70% of the time
-      // 100% might cause ping-pong between dead ends
-      if (validDirections.includes(this.prevMove)) {
-        if (Math.random() < this.exploreStraightFactor) {
-          validDirections = [this.prevMove];
+      // if no moves in queue
+      if (this.turnQueue.length === 0) {
+        // compute valid options
+        const { left, right, up, down, level } = cell;
+        left.coords = [this.location[0] - 1, this.location[1]];
+        right.coords = [this.location[0] + 1, this.location[1]];
+        down.coords = [this.location[0], this.location[1] + 1];
+        up.coords = [this.location[0], this.location[1] - 1];
+        var validDirections = [];
+        if (left.type !== 1 && Math.abs(left.level - level) < 2) {
+          validDirections.push("left");
         }
+        if (right.type !== 1 && Math.abs(right.level - level) < 2) {
+          validDirections.push("right");
+        }
+        if (up.type !== 1 && Math.abs(up.level - level) < 2) {
+          validDirections.push("up");
+        }
+        if (down.type !== 1 && Math.abs(down.level - level) < 2) {
+          validDirections.push("down");
+        }
+        // remove the option that would take us back to previous square, unless that is only option
+        if (validDirections.length > 1) {
+          validDirections = validDirections.filter(
+            (x) => x !== this.flipTurn(this.prevMove)
+          );
+        }
+        // if possible to continue in straight line and the previous move revealed some map, do so
+        // if prev move did not reveal any map, move straight *most of the time, avoiding unproductive movement
+        if (validDirections.includes(this.prevMove)) {
+          if (
+            this.mapSizeHistory[this.turns] >
+              this.mapSizeHistory[this.turns - 1] ||
+            Math.random() < this.exploreStraightFactor
+          ) {
+            validDirections = [this.prevMove];
+          }
+        }
+
+        // from remaining options, choose one at random
+        const n = (Math.random() * validDirections.length) >> 0;
+        if (validDirections[n] === "left") this.turnQueue.push("left");
+        if (validDirections[n] === "right") this.turnQueue.push("right");
+        if (validDirections[n] === "up") this.turnQueue.push("up");
+        if (validDirections[n] === "down") this.turnQueue.push("down");
       }
-      // from remaining options, choose one at random
-      const n = (Math.random() * validDirections.length) >> 0;
-      if (validDirections[n] === "left") return this.left();
-      if (validDirections[n] === "right") return this.right();
-      if (validDirections[n] === "up") return this.up();
-      if (validDirections[n] === "down") return this.down();
+      // do next move in queue
+      const nextTurn = this.turnQueue.shift();
+      if (nextTurn === "up") return this.up();
+      if (nextTurn === "down") return this.down();
+      if (nextTurn === "left") return this.left();
+      if (nextTurn === "right") return this.right();
     }
 
     // PHASE 2: build staircase
@@ -101,8 +106,12 @@ function Stacker() {
           this.turnQueue.push("drop");
           // add one step to the right to finish the game if final step is ready
           if (nextStep === 5) {
-            if (this.caveMap[this.staircase[nextStep].loc[1]][this.staircase[nextStep].loc[0]] === 6)
-            this.turnQueue.push("right")
+            if (
+              this.caveMap[this.staircase[nextStep].loc[1]][
+                this.staircase[nextStep].loc[0]
+              ] === 6
+            )
+              this.turnQueue.push("right");
           }
         } else {
           // PHASE 2b: chart course to nearest block
@@ -147,14 +156,14 @@ function Stacker() {
       this.blocks = new ArraySet(
         this.blocks.toArray().filter((block) => !this.checkIfInStaircase(block))
       );
-      console.log("phase 1 turns:")
-      console.log(this.turns)
       this.phase = 2;
     }
   };
 
   // call updateCoordinate on all surrounding cells and current cell
   this.updateMap = function (cell) {
+    // map size at this turn is equal map size from past turn, new squares will be counted in updateCoordinate()
+    this.mapSizeHistory.push(this.mapSizeHistory[this.turns - 1]);
     const { level, type, left, right, up, down } = cell;
     this.updateCoordinate(this.location[0], this.location[1], { level, type });
     this.updateCoordinate(this.location[0] + 1, this.location[1], right);
@@ -165,6 +174,10 @@ function Stacker() {
 
   // take in specific coordinates and value at the location, update map
   this.updateCoordinate = function (x, y, cell) {
+    // if charting new territory, update map size for this turn
+    if (this.caveMap[y][x] === "-") {
+      this.mapSizeHistory[this.turns] += 1;
+    }
     const { level, type } = cell;
     if (type === 0) {
       this.caveMap[y][x] = 0;
@@ -222,9 +235,10 @@ function Stacker() {
 
   // find a path to specified coordinates using simplified BFS approach
   this.pathToCoords = function (start, target) {
-    const copy = []
+    // copy of map to mark with visited squares
+    const copy = [];
     for (let i = 0; i < 33; i++) {
-      copy.push([...this.caveMap[i]])
+      copy.push([...this.caveMap[i]]);
     }
     const directions = [
       [0, 1],
@@ -272,7 +286,6 @@ function Stacker() {
               path: [...currentLocation.path, newLocation],
               height: copy[newLocation[1]][newLocation[0]] - 10,
             });
-
           }
         }
       }
@@ -280,43 +293,18 @@ function Stacker() {
     // return null if no path possible
     // should never reach here, ever path will be possible
     this.resetMap();
-    console.log("no path found")
+    console.log("no path found");
     return null;
-  };
-
-  // find edge of explored area calc path to it
-  this.exploreEdge = function () {
-    // find edges of explored area
-    let minX = 100
-    let maxX = 0
-    let minY = 100
-    let maxY = 0
-    for (let i = 0; i < 33; i++) {
-      for (let j = 0; j < 33; j++) {
-        if (this.caveMap[i][j] !== "-") {
-          if (i < minY) minY = i
-          if (i > maxY) maxY = i
-          if (j < minX) minX = j
-          if (j > maxX) maxX = j
-        } 
-      }
-    }
-    // find areas in between known regions, chart path there
-    // ...
-  }
+  };  
 
   // check if square is traversible and univisted in this search, if it is return true AND mark as visited
   this.isValidSquare = function (x, y, height, copy) {
-    const square = copy[y][x]
-
-    if (copy[y][x] > 8 || copy[y][x] === "-") {
+    const square = copy[y][x];
+    if (square > 8 || square === "-") {
       return false;
     } else {
-      // console.log(copy[y][x], height)
-      if (Math.abs(copy[y][x] - height) < 2) {
-        // console.log("valid!")
-        // console.log([x,y])
-        copy[y][x] = copy[y][x] + 10;
+      if (Math.abs(square - height) < 2) {
+        copy[y][x] = square + 10;
         return true;
       } else {
         return false;
@@ -460,8 +448,7 @@ function Stacker() {
   // convert coordinate pair into distance from staircase start
   this.calcDistanceToGold = function (coords) {
     return (
-      Math.abs(this.staircaseStart[0] - coords[0]) +
-      Math.abs(this.staircaseStart[1] - coords[1])
+      Math.abs(this.gold[0] - coords[0]) + Math.abs(this.gold[1] - coords[1])
     );
   };
 
@@ -506,6 +493,13 @@ function Stacker() {
     )
       return true;
     return false;
+  };
+
+  this.calcDistanceToTroll = function (coords) {
+    return (
+      Math.abs(this.location[0] - coords[0]) +
+      Math.abs(this.location[1] - coords[1])
+    );
   };
 }
 
