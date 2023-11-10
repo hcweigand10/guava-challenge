@@ -19,7 +19,7 @@ function Stacker() {
   this.fullClimb = ["right", "down", "down", "left", "left", "up"];
 
   // when exploring, this number dictates liklihood of continuing in straight line (when possible)
-  this.exploreStraightFactor = 0.7;
+  this.exploreStraightFactor = 0.69;
 
   // 33 x 33 coordinate map to allow for us starting at any origin
   this.caveMap = [];
@@ -40,6 +40,10 @@ function Stacker() {
 
     // PHASE 1: Randomly-ish move until cave sufficienty explored to reveal gold and 28 blocks
     if (this.phase == 1) {
+      if (this.turns === 225) {
+        this.printMap()
+        this.exploreEdge()
+      }
       // if any moves in queue, do next
       if (this.turnQueue.length > 0) {
         const nextTurn = this.turnQueue.shift();
@@ -85,7 +89,7 @@ function Stacker() {
     // PHASE 2: build staircase
     else if (this.phase === 2) {
       if (this.turnQueue.length === 0) {
-        // PHASE 2a: build next stair in staircase and then return to staircase start
+        // PHASE 2a: calc next stair and chart course to it
         if (this.hasBlock) {
           const nextStep = this.calcNextNeededStair();
           const pathToNextStair = this.pathToCoords(
@@ -101,7 +105,7 @@ function Stacker() {
             this.turnQueue.push("right")
           }
         } else {
-          // PHASE 2b: chart course to block and course back
+          // PHASE 2b: chart course to nearest block
           // convert set of known blocks back into array
           const blockCoordsArray = this.blocks.toArray();
           // sort array by distance to gold
@@ -114,25 +118,6 @@ function Stacker() {
           const turns = this.convertPathToTurns(pathToBlock, this.location);
           this.turnQueue = this.turnQueue.concat(turns);
           this.turnQueue.push("pickup");
-          // if at staircase start, just reverse path to get back
-          // if (
-          //   this.location[0] === this.staircaseStart[0] &&
-          //   this.location[1] === this.staircaseStart[1]
-          // ) {
-          //   this.turnQueue = this.turnQueue.concat(
-          //     this.flipAndReversePath(turns)
-          //   );
-          // }
-          // // else, calc path back to staircase from block
-          // else {
-          //   const pathBack = this.pathToCoords(
-          //     this.nextBlock,
-          //     this.staircaseStart
-          //   );
-          //   const turns = this.convertPathToTurns(pathBack, this.nextBlock);
-          //   this.turnQueue = this.turnQueue.concat(turns);
-          // }
-          // this.blocks.delete(this.nextBlock);
         }
       }
       // once queue is built, start with the first move
@@ -157,11 +142,13 @@ function Stacker() {
       // mark where staircase will begin, this will be our reference point for building
       this.staircaseStart = [this.gold[0], this.gold[1] - 1];
       this.genStaircase();
-      this.printMap();
+      // this.printMap();
       // filter out blocks next to gold from the list of blocks to be gathered
       this.blocks = new ArraySet(
         this.blocks.toArray().filter((block) => !this.checkIfInStaircase(block))
       );
+      console.log("phase 1 turns:")
+      console.log(this.turns)
       this.phase = 2;
     }
   };
@@ -264,23 +251,7 @@ function Stacker() {
           currentLocation.coords[0] + direction[0],
           currentLocation.coords[1] + direction[1],
         ];
-        // if new location is our destination, return early with path
-        // if (target[0] === newLocation[0] && target[1] === newLocation[1]) {
-        //   if (this.isValidSquare(newLocation[0], newLocation[1], currentLocation.height)) {
-
-        //     this.resetMap();
-        //     return [...currentLocation.path, newLocation];
-        //   }
-        //   else {
-            
-        //     queue.push({
-        //       coords: newLocation,
-        //       path: [...currentLocation.path, newLocation],
-        //       height: copy[newLocation[1]][newLocation[0]],
-        //     })
-        //   }
-        // } 
-        // otherwise, check if location is valid. If it is, add it to the queue
+        // first check if neighboring square is valid/traversible
         if (
           this.isValidSquare(
             newLocation[0],
@@ -289,10 +260,13 @@ function Stacker() {
             copy
           )
         ) {
+          // next check if its the target
           if (target[0] === newLocation[0] && target[1] === newLocation[1]) {
+            // return early with path
             this.resetMap();
             return [...currentLocation.path, newLocation];
           } else {
+            // otherwise add valid locations to the queue
             queue.push({
               coords: newLocation,
               path: [...currentLocation.path, newLocation],
@@ -309,6 +283,27 @@ function Stacker() {
     console.log("no path found")
     return null;
   };
+
+  // find edge of explored area calc path to it
+  this.exploreEdge = function () {
+    // find edges of explored area
+    let minX = 100
+    let maxX = 0
+    let minY = 100
+    let maxY = 0
+    for (let i = 0; i < 33; i++) {
+      for (let j = 0; j < 33; j++) {
+        if (this.caveMap[i][j] !== "-") {
+          if (i < minY) minY = i
+          if (i > maxY) maxY = i
+          if (j < minX) minX = j
+          if (j > maxX) maxX = j
+        } 
+      }
+    }
+    // find areas in between known regions, chart path there
+    // ...
+  }
 
   // check if square is traversible and univisted in this search, if it is return true AND mark as visited
   this.isValidSquare = function (x, y, height, copy) {
